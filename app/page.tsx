@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type Market = "IN" | "US" | "CA";
 type AssetType = "Stock" | "Mutual Fund" | "Crypto";
@@ -15,15 +15,24 @@ type Holding = {
   current: number;
 };
 
-function formatCurrency(value: number, market: Market = "IN") {
+function formatCurrency(value: number, market: Market | "USD" = "IN") {
   const currency =
-    market === "US" ? "USD" : market === "CA" ? "CAD" : "INR";
+    market === "US" || market === "USD"
+      ? "USD"
+      : market === "CA"
+      ? "CAD"
+      : "INR";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(isFinite(value) ? value : 0);
 }
+
+type FxRates = {
+  inrToUsd: number;
+  cadToUsd: number;
+};
 
 export default function Page() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
@@ -38,15 +47,95 @@ export default function Page() {
 
   const [idCounter, setIdCounter] = useState(1);
 
-  const { totalValue, totalInvested, totalPL } = useMemo(() => {
-    let invested = 0;
-    let value = 0;
+  const [fxRates, setFxRates] = useState<FxRates | null>(null);
+  const [fxStatus, setFxStatus] = useState<
+    "idle" | "loading" | "ok" | "error"
+  >("idle");
+
+  // Fetch FX rates (INR->USD and CAD->USD) every 15 minutes
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFx() {
+      try {
+        setFxStatus("loading");
+        // Free, no-auth FX API example (ExchangeRate.host-like).
+        const res = await fetch(
+          "https://api.exchangerate.host/latest?base=USD&symbols=INR,CAD"
+        );
+        if (!res.ok) throw new Error("FX request failed");
+        const data = await res.json();
+        const usdToInr = data.rates?.INR ?? 0;
+        const usdToCad = data.rates?.CAD ?? 0;
+        if (!usdToInr || !usdToCad) throw new Error("Bad FX data");
+
+        const inrToUsd = 1 / usdToInr;
+        const cadToUsd = 1 / usdToCad;
+
+        if (!cancelled) {
+          setFxRates({ inrToUsd, cadToUsd });
+          setFxStatus("ok");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setFxStatus("error");
+        }
+      }
+    }
+
+    loadFx();
+    const id = setInterval(loadFx, 15 * 60 * 1000); // 15 minutes
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  function toUsd(valueLocal: number, market: Market): number {
+    if (!fxRates) return NaN;
+    if (market === "US") return valueLocal;
+    if (market === "IN") return valueLocal * fxRates.inrToUsd;
+    if (market === "CA") return valueLocal * fxRates.cadToUsd;
+    return valueLocal;
+  }
+
+  const totals = useMemo(() => {
+    let investedLocal = 0;
+    let valueLocal = 0;
+    let plLocal = 0;
+
+    let investedUsd = 0;
+    let valueUsd = 0;
+    let plUsd = 0;
+
     holdings.forEach((h) => {
-      invested += h.quantity * h.avgBuy;
-      value += h.quantity * h.current;
+      const invested = h.quantity * h.avgBuy;
+      const value = h.quantity * h.current;
+      const pl = value - invested;
+
+      investedLocal += invested;
+      valueLocal += value;
+      plLocal += pl;
+
+      if (fxRates) {
+        const investedU = toUsd(invested, h.market);
+        const valueU = toUsd(value, h.market);
+        const plU = toUsd(pl, h.market);
+        investedUsd += investedU;
+        valueUsd += valueU;
+        plUsd += plU;
+      }
     });
-    return { totalValue: value, totalInvested: invested, totalPL: value - invested };
-  }, [holdings]);
+
+    return {
+      investedLocal,
+      valueLocal,
+      plLocal,
+      investedUsd: fxRates ? investedUsd : NaN,
+      valueUsd: fxRates ? valueUsd : NaN,
+      plUsd: fxRates ? plUsd : NaN,
+    };
+  }, [holdings, fxRates]);
 
   function resetForm() {
     setFormAsset("");
@@ -99,6 +188,15 @@ export default function Page() {
     setHoldings((prev) => prev.filter((h) => h.id !== id));
   }
 
+  const fxLabel =
+    fxStatus === "loading"
+      ? "FX loading…"
+      : fxStatus === "error"
+      ? "FX error (totals may be blank)"
+      : fxStatus === "ok"
+      ? "FX updated (USD dashboard)"
+      : "";
+
   return (
     <main
       style={{
@@ -125,7 +223,7 @@ export default function Page() {
             justifyContent: "space-between",
             alignItems: "flex-start",
             gap: 16,
-            marginBottom: 32,
+            marginBottom: 24,
           }}
         >
           <div>
@@ -143,13 +241,29 @@ export default function Page() {
                 margin: 0,
                 color: "#cbd5f5",
                 fontSize: 14,
-                maxWidth: 420,
+                maxWidth: 460,
               }}
             >
-              Unified portfolio dashboard for stocks, mutual funds and crypto.
-              This version lets you add holdings in memory and see totals
-              update instantly.
+              Holdings in native currencies (INR / USD / CAD). Top dashboard
+              shows everything converted to USD using FX rates refreshed
+              roughly every 15 minutes.
             </p>
+            {fxLabel && (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 11,
+                  color:
+                    fxStatus === "error"
+                      ? "#f97316"
+                      : fxStatus === "loading"
+                      ? "#e5e7eb"
+                      : "#22c55e",
+                }}
+              >
+                {fxLabel}
+              </p>
+            )}
           </div>
           <div
             style={{
@@ -162,11 +276,11 @@ export default function Page() {
                 "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,64,175,0.35))",
             }}
           >
-            MVP · Phase 1
+            MVP · Phase 1 · USD dashboard
           </div>
         </header>
 
-        {/* Summary cards */}
+        {/* USD Summary cards */}
         <section
           style={{
             display: "grid",
@@ -191,7 +305,7 @@ export default function Page() {
                 marginBottom: 4,
               }}
             >
-              Total Value
+              Total Value (USD)
             </div>
             <div
               style={{
@@ -199,7 +313,7 @@ export default function Page() {
                 fontWeight: 600,
               }}
             >
-              {formatCurrency(totalValue, "IN")}
+              {formatCurrency(totals.valueUsd || 0, "USD")}
             </div>
           </div>
 
@@ -219,16 +333,17 @@ export default function Page() {
                 marginBottom: 4,
               }}
             >
-              Day P&L
+              Day P&L (USD)
             </div>
             <div
               style={{
                 fontSize: 20,
                 fontWeight: 600,
-                color: totalPL >= 0 ? "#22c55e" : "#f97316",
+                color:
+                  (totals.plUsd || 0) >= 0 ? "#22c55e" : "#f97316",
               }}
             >
-              {formatCurrency(totalPL, "IN")}
+              {formatCurrency(totals.plUsd || 0, "USD")}
             </div>
           </div>
 
@@ -248,16 +363,17 @@ export default function Page() {
                 marginBottom: 4,
               }}
             >
-              Total P&L
+              Total P&L (USD)
             </div>
             <div
               style={{
                 fontSize: 20,
                 fontWeight: 600,
-                color: totalPL >= 0 ? "#e5e7eb" : "#f97316",
+                color:
+                  (totals.plUsd || 0) >= 0 ? "#e5e7eb" : "#f97316",
               }}
             >
-              {formatCurrency(totalPL, "IN")}
+              {formatCurrency(totals.plUsd || 0, "USD")}
             </div>
           </div>
         </section>
@@ -297,8 +413,8 @@ export default function Page() {
                   color: "#9ca3af",
                 }}
               >
-                Add, remove and experiment with holdings locally. Supabase
-                persistence will come next.
+                Table stays in native currency. Dashboard converts to USD
+                using FX.
               </p>
             </div>
             <button
@@ -383,7 +499,7 @@ export default function Page() {
                       }}
                     >
                       No holdings yet. Use “Add holding” to try out the
-                      workflow before connecting to Supabase.
+                      workflow.
                     </td>
                   </tr>
                 ) : (
@@ -421,10 +537,10 @@ export default function Page() {
                           }}
                         >
                           {h.market === "IN"
-                            ? "India"
+                            ? "India (INR)"
                             : h.market === "US"
-                            ? "US"
-                            : "Canada"}
+                            ? "US (USD)"
+                            : "Canada (CAD)"}
                         </td>
                         <td
                           style={{
@@ -513,7 +629,7 @@ export default function Page() {
           </div>
         </section>
 
-        {/* Simple modal */}
+        {/* Modal for adding holding (same as before) */}
         {showModal && (
           <div
             style={{
@@ -555,8 +671,8 @@ export default function Page() {
                   color: "#9ca3af",
                 }}
               >
-                This is local only for now. Data will be persisted to
-                Supabase in the next step.
+                Data is stored locally in your browser for now. FX is only
+                used for the USD dashboard totals.
               </p>
 
               <div
@@ -631,9 +747,9 @@ export default function Page() {
                         fontSize: 13,
                       }}
                     >
-                      <option value="IN">India</option>
-                      <option value="US">US</option>
-                      <option value="CA">Canada</option>
+                      <option value="IN">India (INR)</option>
+                      <option value="US">US (USD)</option>
+                      <option value="CA">Canada (CAD)</option>
                     </select>
                   </label>
 
