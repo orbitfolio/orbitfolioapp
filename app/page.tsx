@@ -52,21 +52,23 @@ export default function Page() {
     "idle" | "loading" | "ok" | "error"
   >("idle");
 
-  // Fetch FX rates (INR->USD and CAD->USD) every 15 minutes
+  // Fetch FX rates (INR->USD and CAD->USD) every 30 minutes using Freecurrencyapi
   useEffect(() => {
     let cancelled = false;
 
     async function loadFx() {
       try {
         setFxStatus("loading");
-        // Free, no-auth FX API example (ExchangeRate.host-like).
+
+        const API_KEY = "fca_live_sjHD1tO8YZJgDOwcu0QLrpDFsoOg80MEVJkNAzwn";
         const res = await fetch(
-          "https://api.exchangerate.host/latest?base=USD&symbols=INR,CAD"
+          `https://api.freecurrencyapi.com/v1/latest?apikey=${API_KEY}&currencies=INR,CAD`
         );
+
         if (!res.ok) throw new Error("FX request failed");
         const data = await res.json();
-        const usdToInr = data.rates?.INR ?? 0;
-        const usdToCad = data.rates?.CAD ?? 0;
+        const usdToInr = data.data?.INR ?? 0;
+        const usdToCad = data.data?.CAD ?? 0;
         if (!usdToInr || !usdToCad) throw new Error("Bad FX data");
 
         const inrToUsd = 1 / usdToInr;
@@ -84,7 +86,7 @@ export default function Page() {
     }
 
     loadFx();
-    const id = setInterval(loadFx, 15 * 60 * 1000); // 15 minutes
+    const id = setInterval(loadFx, 30 * 60 * 1000); // 30 minutes
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -100,10 +102,6 @@ export default function Page() {
   }
 
   const totals = useMemo(() => {
-    let investedLocal = 0;
-    let valueLocal = 0;
-    let plLocal = 0;
-
     let investedUsd = 0;
     let valueUsd = 0;
     let plUsd = 0;
@@ -113,24 +111,14 @@ export default function Page() {
       const value = h.quantity * h.current;
       const pl = value - invested;
 
-      investedLocal += invested;
-      valueLocal += value;
-      plLocal += pl;
-
       if (fxRates) {
-        const investedU = toUsd(invested, h.market);
-        const valueU = toUsd(value, h.market);
-        const plU = toUsd(pl, h.market);
-        investedUsd += investedU;
-        valueUsd += valueU;
-        plUsd += plU;
+        investedUsd += toUsd(invested, h.market);
+        valueUsd += toUsd(value, h.market);
+        plUsd += toUsd(pl, h.market);
       }
     });
 
     return {
-      investedLocal,
-      valueLocal,
-      plLocal,
       investedUsd: fxRates ? investedUsd : NaN,
       valueUsd: fxRates ? valueUsd : NaN,
       plUsd: fxRates ? plUsd : NaN,
@@ -246,7 +234,7 @@ export default function Page() {
             >
               Holdings in native currencies (INR / USD / CAD). Top dashboard
               shows everything converted to USD using FX rates refreshed
-              roughly every 15 minutes.
+              roughly every 30 minutes.
             </p>
             {fxLabel && (
               <p
@@ -629,7 +617,7 @@ export default function Page() {
           </div>
         </section>
 
-        {/* Modal for adding holding (same as before) */}
+        {/* Modal */}
         {showModal && (
           <div
             style={{
