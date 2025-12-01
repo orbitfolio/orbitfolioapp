@@ -60,7 +60,7 @@ export default function Page() {
       try {
         setFxStatus("loading");
 
-        const API_KEY = "YOUR_FREECURRENCYAPI_KEY_HERE";
+        const API_KEY = "fca_live_sjHD1tO8YZJgDOwcu0QLrpDFsoOg80MEVJkNAzwn";
         const res = await fetch(
           `https://api.freecurrencyapi.com/v1/latest?apikey=${API_KEY}&currencies=INR,CAD`
         );
