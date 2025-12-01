@@ -60,9 +60,9 @@ export default function Page() {
       try {
         setFxStatus("loading");
 
-        const url = process.env.https://api.exchangeratesapi.io/v1/latest?access_key=4dc30e5e13b1f7a7d2337cc773e4ab95,INR,CAD&symbols=USD;
+        const url = process.env.NEXT_PUBLIC_EXCHANGE_RATES_API_URL;
         if (!url) {
-          throw new Error("Missing https://api.exchangeratesapi.io/v1/latest?access_key=4dc30e5e13b1f7a7d2337cc773e4ab95,INR,CAD&symbols=USD");
+          throw new Error("Missing NEXT_PUBLIC_EXCHANGE_RATES_API_URL");
         }
 
         const res = await fetch(url);
