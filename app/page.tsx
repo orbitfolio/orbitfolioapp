@@ -52,7 +52,7 @@ export default function Page() {
     "idle" | "loading" | "ok" | "error"
   >("idle");
 
-  // Fetch FX rates (INR->USD and CAD->USD) every 30 minutes using Freecurrencyapi
+  // Fetch FX rates (INR->USD and CAD->USD) using ExchangeRate-API (base USD)
   useEffect(() => {
     let cancelled = false;
 
@@ -60,16 +60,22 @@ export default function Page() {
       try {
         setFxStatus("loading");
 
-        const API_KEY = "fca_live_sjHD1tO8YZJgDOwcu0QLrpDFsoOg80MEVJkNAzwn";
+        const API_KEY = "4dc30e5e13b1f7a7d2337cc773e4ab95";
+        // Standard endpoint with base USD; returns conversion_rates map.[web:184][web:191]
         const res = await fetch(
-          `https://api.freecurrencyapi.com/v1/latest?apikey=${API_KEY}&currencies=INR,CAD`
+          `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/USD`
         );
 
         if (!res.ok) throw new Error("FX request failed");
         const data = await res.json();
-        const usdToInr = data.data?.INR ?? 0;
-        const usdToCad = data.data?.CAD ?? 0;
-        if (!usdToInr || !usdToCad) throw new Error("Bad FX data");
+
+        if (data.result !== "success" || !data.conversion_rates) {
+          throw new Error("Bad FX data");
+        }
+
+        const usdToInr = data.conversion_rates.INR ?? 0;
+        const usdToCad = data.conversion_rates.CAD ?? 0;
+        if (!usdToInr || !usdToCad) throw new Error("Missing INR/CAD");
 
         const inrToUsd = 1 / usdToInr;
         const cadToUsd = 1 / usdToCad;
@@ -153,7 +159,6 @@ export default function Page() {
       return;
     }
 
-    // FIX: keep current price equal to avg buy until real market data is added
     const current = avgBuy;
 
     const next: Holding = {
