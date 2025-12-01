@@ -52,7 +52,7 @@ export default function Page() {
     "idle" | "loading" | "ok" | "error"
   >("idle");
 
-  // Fetch FX rates (INR->USD and CAD->USD) using ExchangeRate-API (base USD)
+  // FX via exchangeratesapi.io using FULL URL from env
   useEffect(() => {
     let cancelled = false;
 
@@ -60,25 +60,33 @@ export default function Page() {
       try {
         setFxStatus("loading");
 
-        const API_KEY = "4dc30e5e13b1f7a7d2337cc773e4ab95";
-        // Standard endpoint with base USD; returns conversion_rates map.[web:184][web:191]
-        const res = await fetch(
-          `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/USD`
-        );
+        const url = process.env.https://api.exchangeratesapi.io/v1/latest?access_key=4dc30e5e13b1f7a7d2337cc773e4ab95,INR,CAD&symbols=USD;
+        if (!url) {
+          throw new Error("Missing https://api.exchangeratesapi.io/v1/latest?access_key=4dc30e5e13b1f7a7d2337cc773e4ab95,INR,CAD&symbols=USD");
+        }
 
+        const res = await fetch(url);
         if (!res.ok) throw new Error("FX request failed");
+
         const data = await res.json();
 
-        if (data.result !== "success" || !data.conversion_rates) {
+        // Expected: { success, base, date, rates: { USD, INR, CAD, ... } } [web:4][web:5]
+        if (!data || data.success === false || !data.rates) {
           throw new Error("Bad FX data");
         }
 
-        const usdToInr = data.conversion_rates.INR ?? 0;
-        const usdToCad = data.conversion_rates.CAD ?? 0;
-        if (!usdToInr || !usdToCad) throw new Error("Missing INR/CAD");
+        const rates = data.rates as Record<string, number>;
+        const inr = rates["INR"] ?? 0;
+        const cad = rates["CAD"] ?? 0;
+        const usd = rates["USD"] ?? 0;
 
-        const inrToUsd = 1 / usdToInr;
-        const cadToUsd = 1 / usdToCad;
+        if (!inr || !cad || !usd) {
+          throw new Error("Missing INR/CAD/USD in FX response");
+        }
+
+        // EUR-based quotes → direct INR→USD and CAD→USD [web:4]
+        const inrToUsd = usd / inr;
+        const cadToUsd = usd / cad;
 
         if (!cancelled) {
           setFxRates({ inrToUsd, cadToUsd });
