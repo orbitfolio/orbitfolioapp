@@ -60,7 +60,7 @@ export default function Page() {
       try {
         setFxStatus("loading");
 
-        const API_KEY = "fca_live_sjHD1tO8YZJgDOwcu0QLrpDFsoOg80MEVJkNAzwn";
+        const API_KEY = "YOUR_FREECURRENCYAPI_KEY_HERE";
         const res = await fetch(
           `https://api.freecurrencyapi.com/v1/latest?apikey=${API_KEY}&currencies=INR,CAD`
         );
@@ -78,7 +78,7 @@ export default function Page() {
           setFxRates({ inrToUsd, cadToUsd });
           setFxStatus("ok");
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setFxStatus("error");
         }
@@ -153,8 +153,8 @@ export default function Page() {
       return;
     }
 
-    const variation = 1 + (Math.random() * 0.01 - 0.005); // ±0.5%
-    const current = Number((avgBuy * variation).toFixed(2));
+    // FIX: keep current price equal to avg buy until real market data is added
+    const current = avgBuy;
 
     const next: Holding = {
       id: idCounter,
